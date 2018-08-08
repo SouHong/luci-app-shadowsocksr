@@ -6,7 +6,7 @@ OpenWrt LuCI for ShadowsocksR-libev
 简介
 ---
 
-本软件包是 [shadowsocksR-libev][openwrt-shadowsocksR] 的 LuCI 控制界面,自带GFWList，国内路由表等分流功能。
+本软件包是 [shadowsocksR-libev][openwrt-shadowsocksR][shadowsocks][v2ray][brook]的 LuCI 控制界面,自带GFWList，国内路由表等分流功能。
 
 特性
 

@@ -9,10 +9,18 @@ SS_REDIR_PORT=7070
 SS_TUNNEL_PORT=7071
 SS_LOCAL_PORT=7072
 SS_REDIR_PIDFILE=/var/run/ssrr-redir-go.pid 
+V2RAY_PIDFILE=/var/run/ssrr-v2ray-go.pid
+BROOK_PIDFILE=/var/run/ssrr-brook-go.pid 
 SS_TUNNEL_PIDFILE=/var/run/ssrr-tunnel-go.pid 
 SS_LOCAL_PIDFILE=/var/run/ssrr-local-go.pid
 PDNSD_LOCAL_PORT=5053 #alex:防止和单独的pdnsd服务冲突
 SSR_CONF=/etc/ssrr/shadowsocksr.json
+V2RAY_CONF=/etc/v2ray/config.json
+V2_CONF_GENERATE_LUA=/etc/v2ray/gen_config.lua
+CONFIG=v2ray
+CONFIG1=brook
+CRON_FILE=/etc/crontabs/root
+V2RAY_EXEC_PATH=/usr/bin/v2ray/v2ray
 dnsforwarder_pid=/var/run/dnsforwarder/dns.pid
 vt_gfwlist=china-banned
 vt_np_ipset="chinaip"  # Must be global variable
@@ -46,6 +54,8 @@ start()
 	# $covered_subnets, $local_addresses are not required
 	local covered_subnets=`uci get ssrr.@shadowsocksr[0].covered_subnets 2>/dev/null`
 	local local_addresses=`uci get ssrr.@shadowsocksr[0].local_addresses 2>/dev/null`
+	local conf_file_path=`uci get ssrr.@shadowsocksr[0].conf_file_path 2>/dev/null`
+	local conf_file_type=`uci get ssrr.@shadowsocksr[0].conf_file_type 2>/dev/null`
 
 	
 
@@ -98,12 +108,12 @@ start()
 EOF
 
 			sleep 1
-			/usr/bin/ssrr-redir -c $SSR_CONF -u -b0.0.0.0 -l$SS_REDIR_PORT -s$vt_server_addr -p$vt_server_port \
+			/usr/bin/ssr-redir -c $SSR_CONF -u -b0.0.0.0 -l$SS_REDIR_PORT -s$vt_server_addr -p$vt_server_port \
 				-k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_REDIR_PIDFILE || return 1
 			
 			[ $enable_local = 1 ] && [ "$ssr_local_port" -gt "1" ] && {
 				echo ssrr-local enabled!
-				/usr/bin/ssrr-local -c $SSR_CONF -u -b0.0.0.0 -l$ssr_local_port -s$vt_server_addr -p$vt_server_port \
+				/usr/bin/ssr-local -c $SSR_CONF -u -b0.0.0.0 -l$ssr_local_port -s$vt_server_addr -p$vt_server_port \
 					-k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_LOCAL_PIDFILE || return 1
 			}
 			
@@ -121,14 +131,32 @@ EOF
 }
 EOF
 			sleep 1
-			/usr/bin/ssrr-redir -c $SSR_CONF -u -b0.0.0.0 -l$SS_REDIR_PORT -s$vt_server_addr -p$vt_server_port \
+			/usr/bin/ss-redir -c $SSR_CONF -u -b0.0.0.0 -l$SS_REDIR_PORT -s$vt_server_addr -p$vt_server_port \
 			-k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_REDIR_PIDFILE || return 1
 			
 			[ $enable_local = 1 ] && [ "$ssr_local_port" -gt "1" ] && {
 				echo ssrr-local enabled!
-				/usr/bin/ssrr-local -u -b0.0.0.0 -l$ssr_local_port -s$vt_server_addr -p$vt_server_port \
+				/usr/bin/ss-local -u -b0.0.0.0 -l$ssr_local_port -s$vt_server_addr -p$vt_server_port \
 					-k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_LOCAL_PIDFILE || return 1
 			}
+			;;
+		v2ray)
+			if [ "$use_conf_file" = 0 ]; then
+				/usr/bin/lua $V2_CONF_GENERATE_LUA $CONFIG $V2RAY_CONF
+				$V2RAY_EXEC_PATH -config=$V2RAY_CONF &
+		else
+			$V2RAY_EXEC_PATH -config=$conf_file_path -format=$conf_file_type &
+		fi
+
+		sleep 3
+		if pidof v2ray>/dev/null; then
+			echo "V2Ray started"
+		else
+			return 1
+		fi
+			;;
+		v2ray)
+		/usr/bin/brook tproxy -l 127.0.0.1:1080 -s $vt_server_addr:$vt_server_port -p $vt_password &>/dev/null &
 			;;
 		Redsocks2)
 			cat > $SSR_CONF <<EOF
@@ -205,15 +233,24 @@ EOF
 	}
 
 	iptables -t nat -A ssrr_pre -m set --match-set $vt_local_ipset dst -j RETURN || { #应对没有安装ipset的用户
+		iptables -t nat -A ssrr_pre -d 0.0.0.0/8 -j RETURN
 		iptables -t nat -A ssrr_pre -d 10.0.0.0/8 -j RETURN
 		iptables -t nat -A ssrr_pre -d 127.0.0.0/8 -j RETURN
+		iptables -t nat -A ssrr_pre -d 169.254.0.0/16 -j RETURN
 		iptables -t nat -A ssrr_pre -d 172.16.0.0/12 -j RETURN
 		iptables -t nat -A ssrr_pre -d 192.168.0.0/16 -j RETURN
 		iptables -t nat -A ssrr_pre -d 127.0.0.0/8 -j RETURN
 		iptables -t nat -A ssrr_pre -d 224.0.0.0/3 -j RETURN
+		iptables -t nat -A ssrr_pre -d 240.0.0.0/4 -j RETURN
 	}
 	
-
+	if [ "$tool" != "v2ray" ]; then
+	iptables -t nat -A ssrr_pre -d $vt_server_addr -j RETURN
+	fi
+	if [ "$tool" != "Brook" ]; then
+	iptables -t nat -A ssrr_pre -d $vt_server_addr -j RETURN
+	fi
+	
 	iptables -t mangle -A SSRUDP -m set --match-set $vt_local_ipset dst -j RETURN || { #应对没有安装ipset的用户
 		iptables -t mangle -A SSRUDP -d 10.0.0.0/8 -j RETURN
 		iptables -t mangle -A SSRUDP  -d 127.0.0.0/8 -j RETURN
@@ -222,6 +259,38 @@ EOF
 		iptables -t mangle -A SSRUDP  -d 127.0.0.0/8 -j RETURN
 		iptables -t mangle -A SSRUDP  -d 224.0.0.0/3 -j RETURN
 	}
+	
+	if [ "$tool" != "v2ray" ]; then
+	iptables -N gameboost -t mangle
+	ipset -! create gameuser hash:ip maxelem 65536 2>/dev/null
+	/usr/bin/ip rule add fwmark 0x01/0x01 table 100
+	/usr/bin/ip route add local 0.0.0.0/0 dev lo table 100
+	iptables -t mangle -A gameboost -p udp -m set --match-set local dst -j RETURN
+	iptables -t mangle -A gameboost -p udp -m set --match-set china dst -j RETURN
+	iptables -t mangle -A gameboost -p udp --dport 53 -j RETURN
+	iptables -t mangle -A gameboost -p udp -j TPROXY --on-port 7070 --tproxy-mark 0x01/0x01
+	iptables -t mangle -A PREROUTING -m set --match-set gameuser src -j gameboost
+	fi
+	if [ "$tool" != "Brook" ]; then
+	iptables -t mangle -A ssrr_pre -j MARK --set-mark 1
+	iptables -t mangle -A ssrr_pre -j ACCEPT
+	
+	iptables -t mangle -A PREROUTING -p tcp -m socket -j ssrr_pre
+	iptables -t mangle -A PREROUTING -p tcp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 7070
+
+	iptables -t mangle -A PREROUTING -p udp -m socket -j ssrr_pre
+	iptables -t mangle -A PREROUTING -p udp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 7070
+	
+	iptables -N gameboost -t mangle
+	ipset -! create gameuser hash:ip maxelem 65536 2>/dev/null
+	/usr/bin/ip rule add fwmark 0x01/0x01 table 100
+	/usr/bin/ip route add local 0.0.0.0/0 dev lo table 100
+	iptables -t mangle -A gameboost -p udp -m set --match-set local dst -j RETURN
+	iptables -t mangle -A gameboost -p udp -m set --match-set china dst -j RETURN
+	iptables -t mangle -A gameboost -p udp --dport 53 -j RETURN
+	iptables -t mangle -A gameboost -p udp -j TPROXY --on-port 7070 --tproxy-mark 0x01/0x01
+	iptables -t mangle -A PREROUTING -m set --match-set gameuser src -j gameboost 
+	fi
 	
 	if [ "$white" = 1 ]; then #强制不代理域名
 		ipset create $WHITE_SET hash:net family inet hashsize 1024 maxelem 65536 2>/dev/null
@@ -276,15 +345,16 @@ EOF
 				#开启dnsforwarder
 				start_dnsforwarder "$vt_safe_dns" "$vt_dns_mode"
 				;;
+			oversea)#只代理中国大陆IP
+				iptables -t nat -A ssrr_pre -s $host -m set ! --match-set $vt_np_ipset dst -j RETURN
+				iptables -t mangle -A SSRUDP -s $host -j RETURN
+				;;
 			game)
 				iptables -t nat -A ssrr_pre -s $host  -m set --match-set $vt_np_ipset dst -j RETURN
 				iptables -t mangle -A SSRUDP -s $host  -m set --match-set $vt_np_ipset dst -j RETURN
 				iptables -t mangle -A SSRUDP -s $host  -p udp -j TPROXY --on-port $SS_REDIR_PORT --tproxy-mark 0x01/0x01
 				;;
 			all)
-				;;
-
-			normal)
 				;;
 		esac
 		iptables -t nat -A ssrr_pre -s $host -p tcp -j REDIRECT --to $SS_REDIR_PORT #内网访问控制
@@ -303,6 +373,9 @@ EOF
 			iptables -t nat -A ssrr_pre -m set ! --match-set $vt_gfwlist dst -j RETURN
 			iptables -t nat -A ssrr_pre -m set --match-set $vt_np_ipset dst -j RETURN
 			;;
+		V)#ross:只代理中国大陆IP
+			iptables -t nat -A ssrr_pre -m set ! --match-set $vt_np_ipset dst -j RETURN
+			;;
 		GAME)#alex:游戏模式
 			iptables -t nat -A ssrr_pre -m set --match-set $vt_np_ipset dst -j RETURN
 			iptables -t mangle -A SSRUDP -m set --match-set $vt_np_ipset dst -j RETURN
@@ -313,10 +386,9 @@ EOF
 			;;
 	esac
 	local subnet
-	#for subnet in $covered_subnets; do #alex:添加局域网软路由支持
-	#	iptables -t nat -A ssrr_pre -s $subnet -p tcp -j REDIRECT --to $SS_REDIR_PORT
-	#done
-	iptables -t nat -A ssrr_pre -p tcp -j REDIRECT --to $SS_REDIR_PORT #alex:添加局域网软路由支持
+	for subnet in $covered_subnets; do
+		iptables -t nat -A ssrr_pre -s $subnet -p tcp -j REDIRECT --to $SS_REDIR_PORT
+	done
 	
 	if [ "$adbyby" = '1' ];then
 		iptables -t nat -A OUTPUT -p tcp -m multiport --dports 80,443 -j ssrr_pre
@@ -342,28 +414,73 @@ EOF
 			start_dnsforwarder "$vt_safe_dns" "$vt_dns_mode"
 			;;
 		tunnel_gfwlist) #废弃
-			/usr/bin/ssr-tunnel -c $SSR_CONF -u -b0.0.0.0 -l$SS_TUNNEL_PORT -s$vt_server_addr -p$vt_server_port -k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_TUNNEL_PIDFILE -L $vt_safe_dns:$vt_safe_dns_port			
-			awk -vs="127.0.0.1#$SS_TUNNEL_PORT" '!/^$/&&!/^#/{printf("server=/%s/%s\n",$0,s)}' \
-				/etc/gfwlist/$vt_gfwlist > /var/etc/dnsmasq-go.d/01-pollution.conf
+		case "$tool" in
+			ShadowsocksR)
+				/usr/bin/ssr-tunnel -c $SSR_CONF -u -b0.0.0.0 -l$SS_TUNNEL_PORT -s$vt_server_addr -p$vt_server_port -k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_TUNNEL_PIDFILE -L $vt_safe_dns:$vt_safe_dns_port			
+				awk -vs="127.0.0.1#$SS_TUNNEL_PORT" '!/^$/&&!/^#/{printf("server=/%s/%s\n",$0,s)}' \
+					/etc/gfwlist/$vt_gfwlist > /var/etc/dnsmasq-go.d/01-pollution.conf
 			
-			awk -vs="127.0.0.1#$PDNSD_LOCAL_PORT" '!/^$/&&!/^#/{printf("server=/%s/%s\n",$0,s)}' \
-				/etc/gfwlist/userlist >> /var/etc/dnsmasq-go.d/01-pollution.conf
+				awk -vs="127.0.0.1#$PDNSD_LOCAL_PORT" '!/^$/&&!/^#/{printf("server=/%s/%s\n",$0,s)}' \
+					/etc/gfwlist/userlist >> /var/etc/dnsmasq-go.d/01-pollution.conf
 
-			uci set dhcp.@dnsmasq[0].resolvfile=/tmp/resolv.conf.auto
-			uci delete dhcp.@dnsmasq[0].noresolv
-			uci commit dhcp
-			;;
+				uci set dhcp.@dnsmasq[0].resolvfile=/tmp/resolv.conf.auto
+				uci delete dhcp.@dnsmasq[0].noresolv
+				uci commit dhcp
+				;;
+			Shadowsocks)
+				/usr/bin/ss-tunnel -c $SSR_CONF -u -b0.0.0.0 -l$SS_TUNNEL_PORT -s$vt_server_addr -p$vt_server_port -k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_TUNNEL_PIDFILE -L $vt_safe_dns:$vt_safe_dns_port			
+				awk -vs="127.0.0.1#$SS_TUNNEL_PORT" '!/^$/&&!/^#/{printf("server=/%s/%s\n",$0,s)}' \
+					/etc/gfwlist/$vt_gfwlist > /var/etc/dnsmasq-go.d/01-pollution.conf
+			
+				awk -vs="127.0.0.1#$PDNSD_LOCAL_PORT" '!/^$/&&!/^#/{printf("server=/%s/%s\n",$0,s)}' \
+					/etc/gfwlist/userlist >> /var/etc/dnsmasq-go.d/01-pollution.conf
 
+				uci set dhcp.@dnsmasq[0].resolvfile=/tmp/resolv.conf.auto
+				uci delete dhcp.@dnsmasq[0].noresolv
+				uci commit dhcp
+				;;
+			Redsocks2)
+				/usr/bin/ssr-tunnel -c $SSR_CONF -u -b0.0.0.0 -l$SS_TUNNEL_PORT -s$vt_server_addr -p$vt_server_port -k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_TUNNEL_PIDFILE -L $vt_safe_dns:$vt_safe_dns_port			
+				awk -vs="127.0.0.1#$SS_TUNNEL_PORT" '!/^$/&&!/^#/{printf("server=/%s/%s\n",$0,s)}' \
+					/etc/gfwlist/$vt_gfwlist > /var/etc/dnsmasq-go.d/01-pollution.conf
+			
+				awk -vs="127.0.0.1#$PDNSD_LOCAL_PORT" '!/^$/&&!/^#/{printf("server=/%s/%s\n",$0,s)}' \
+					/etc/gfwlist/userlist >> /var/etc/dnsmasq-go.d/01-pollution.conf
+
+				uci set dhcp.@dnsmasq[0].resolvfile=/tmp/resolv.conf.auto
+				uci delete dhcp.@dnsmasq[0].noresolv
+				uci commit dhcp
+				;;
+		esac
+		;;
 		safe_only) #直接全部发到用户指定安全DNS
 			iptables -t nat -A ssrr_pre --dport 53 -j DNAT --to-destination $vt_safe_dns:$vt_safe_dns_port
 			;;
 		tunnel_all) #废弃
+		case "$tool" in
+			ShadowsocksR)
 			/usr/bin/ssr-tunnel -c $SSR_CONF -u -b0.0.0.0 -l$SS_TUNNEL_PORT -s$vt_server_addr -p$vt_server_port -k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_TUNNEL_PIDFILE -L $vt_safe_dns:$vt_safe_dns_port
 			echo server=127.0.0.1#$SS_TUNNEL_PORT > /var/etc/dnsmasq-go.d/01-pollution.conf
 			uci delete dhcp.@dnsmasq[0].resolvfile
 			uci set dhcp.@dnsmasq[0].noresolv=1
 			uci commit dhcp
 			;;
+			Shadowsocks)
+			/usr/bin/ss-tunnel -c $SSR_CONF -u -b0.0.0.0 -l$SS_TUNNEL_PORT -s$vt_server_addr -p$vt_server_port -k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_TUNNEL_PIDFILE -L $vt_safe_dns:$vt_safe_dns_port
+			echo server=127.0.0.1#$SS_TUNNEL_PORT > /var/etc/dnsmasq-go.d/01-pollution.conf
+			uci delete dhcp.@dnsmasq[0].resolvfile
+			uci set dhcp.@dnsmasq[0].noresolv=1
+			uci commit dhcp
+			;;
+			Redsocks2)
+			/usr/bin/ssr-tunnel -c $SSR_CONF -u -b0.0.0.0 -l$SS_TUNNEL_PORT -s$vt_server_addr -p$vt_server_port -k"$vt_password" -m$vt_method -t$vt_timeout -f $SS_TUNNEL_PIDFILE -L $vt_safe_dns:$vt_safe_dns_port
+			echo server=127.0.0.1#$SS_TUNNEL_PORT > /var/etc/dnsmasq-go.d/01-pollution.conf
+			uci delete dhcp.@dnsmasq[0].resolvfile
+			uci set dhcp.@dnsmasq[0].noresolv=1
+			uci commit dhcp
+			;;
+		esac
+		;;
 	esac
 
 	local ipcount=`ipset list $vt_np_ipset | wc -l`
@@ -409,6 +526,16 @@ stop()
 		kill -9 `cat $SS_LOCAL_PIDFILE`
 		rm -f $SS_LOCAL_PIDFILE
 	fi
+	if [ -f $V2RAY_PIDFILE ]; then
+		kill -9 `cat $V2RAY_PIDFILE`
+		rm -f $V2RAY_PIDFILE
+	fi
+	killall -9 v2ray 2>/dev/null
+	if [ -f $BROOK_PIDFILE ]; then
+		kill -9 `cat $BROOK_PIDFILE`
+		rm -f $BROOK_PIDFILE
+	fi
+	killall -9 brook 2>/dev/null
 }
 
 keep_chinaip=0
@@ -479,12 +606,12 @@ start_dnsforwarder()
 	echo safe dns = $safe_dns dns mode is $dns_mode
 	local white=`uci get ssrr.@shadowsocksr[0].white 2>/dev/null`
 
-	local tcp_dns_list="208.67.222.222,208.67.220.220" #alex:给pdnsd使用的可靠的国外dns服务器
+	local tcp_dns_list="1.0.0.1,1.1.1.1,4.2.2.1,4.2.2.2,8.8.4.4,8.8.8.8,9.9.9.9,208.67.222.222,208.67.220.220,1.0.0.1:443,1.1.1.1:443,1.0.0.1:853,1.1.1.1:853,208.67.222.222:443,208.67.220.220:443,208.67.222.222:5353,208.67.220.220:5353,2001:4860:4860::8844,2001:4860:4860::8888,2606:4700:4700::1111,2606:4700:4700::1001" #alex:给pdnsd使用的可靠的国外dns服务器
 	
 	case "$dns_mode" in
 		tcp_gfwlist)
 			[ -n "$safe_dns" ] && tcp_dns_list="$safe_dns,$tcp_dns_list"
-			safe_dns="114.114.114.114"
+			safe_dns="114.114.114.114,223.5.5.5,114.114.115.115,223.6.6.6"
 			;;
 		tcp_proxy)
 			[ -n "$safe_dns" ] && tcp_dns_list="$safe_dns,$tcp_dns_list"
@@ -540,6 +667,7 @@ stop_dnsforwarder()
 	fi
 	
 	uci set dnsforwarder.@arguments[0].enabled=0
+	uci set dnsforwarder.@arguments[0].dnsmasq=0
 	uci commit dnsforwarder
 	/etc/init.d/dnsforwarder restart
 	[ -f  "/etc/dnsforwarder/dnsforwarder.conf.bak" ] && cp /etc/dnsforwarder/dnsforwarder.conf.bak /etc/dnsforwarder/dnsforwarder.conf
