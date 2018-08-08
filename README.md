@@ -6,7 +6,7 @@ OpenWrt LuCI for ShadowsocksR-libev
 简介
 ---
 
-本软件包是 [shadowsocksR-libev][openwrt-shadowsocksR][shadowsocks][v2ray][brook]的 LuCI 控制界面,自带GFWList，国内路由表等分流功能。
+本软件包是  [openwrt-shadowsocksR] [shadowsocks] [v2ray] [brook]的 LuCI 控制界面,自带GFWList，国内路由表等分流功能。
 
 特性
 
@@ -91,10 +91,11 @@ make package/luci-app-shadowsocksR/compile V=99
 
 [O]: http://www.right.com.cn/forum/thread-198649-1-1.html
 [openwrt-shadowsocksR]: https://github.com/505575853/openwrt-shadowsocksr
+[shadowsocks]: https://github.com/shadowsocks/shadowsocks-libev
 [v2ray]: https://github.com/505575853/v2ray
 [brook]: https://github.com/505575853/brook
 [openwrt-sdk]: https://wiki.openwrt.org/doc/howto/obtain.firmware.sdk
 [haproxy]: https://github.com/AlexZhuo/luci-app-haproxy-tcp
 [kcptun]: https://github.com/AlexZhuo/luci-app-kcptun
-[dnsforwarder]: https://github.com/AlexZhuo/openwrt-dnsforwarder
+[dnsforwarder]: https://github.com/505575853/openwrt-dnsforwarder
 [redsocks2]: https://github.com/AlexZhuo/openwrt-redsocks2
