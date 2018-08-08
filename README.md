@@ -55,7 +55,8 @@ OpenWrt LuCI for ShadowsocksR-libev
 `dnsforwarder`用于TCP协议请求DNS便于转发至SSR服务器，请到[openwrt-dnsforwarder][dnsforwarder]编译
 
 `ip-full` `iptables-mod-tproxy` `kmod-ipt-tproxy` `iptables-mod-nat-extra` 用于实现UDP转发
-v2ray 需依赖 [luci-app-filetransfer] `lua-cjson`
+
+v2ray 需依赖 [luci-app-filetransfer] `lua-cjson` 用于配置上传
 
 配置
 ---
