@@ -56,7 +56,7 @@ OpenWrt LuCI for ShadowsocksR-libev
 
 `ip-full` `iptables-mod-tproxy` `kmod-ipt-tproxy` `iptables-mod-nat-extra` 用于实现UDP转发
 
-v2ray 需依赖 [luci-app-filetransfer] `lua-cjson` 用于配置上传
+v2ray 需依赖 [luci-app-filetransfer]  `lua-cjson` 用于配置上传
 
 配置
 ---
@@ -101,4 +101,4 @@ make package/luci-app-shadowsocksR/compile V=99
 [kcptun]: https://github.com/AlexZhuo/luci-app-kcptun
 [dnsforwarder]: https://github.com/505575853/openwrt-dnsforwarder
 [redsocks2]: https://github.com/AlexZhuo/openwrt-redsocks2
-[luci-app-filetransfer]: ttps://github.com/505575853/luci-app-filetransfer
+[luci-app-filetransfer]: https://github.com/505575853/luci-app-filetransfer
