@@ -90,7 +90,9 @@ make package/luci-app-shadowsocksR/compile V=99
 ![demo](https://github.com/AlexZhuo/luci-app-shadowsocksR/raw/master/screencapture2.png)
 
 [O]: http://www.right.com.cn/forum/thread-198649-1-1.html
-[openwrt-shadowsocksR]: https://github.com/AlexZhuo/openwrt-shadowsocksr
+[openwrt-shadowsocksR]: https://github.com/505575853/openwrt-shadowsocksr
+[v2ray]: https://github.com/505575853/v2ray
+[brook]: https://github.com/505575853/brook
 [openwrt-sdk]: https://wiki.openwrt.org/doc/howto/obtain.firmware.sdk
 [haproxy]: https://github.com/AlexZhuo/luci-app-haproxy-tcp
 [kcptun]: https://github.com/AlexZhuo/luci-app-kcptun
