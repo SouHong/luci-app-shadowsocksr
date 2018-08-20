@@ -515,7 +515,6 @@ restart()
 # $1: upstream DNS server
 start_dnsforwarder()
 {
-	sleep 6
 	echo reday to start dnsforwarder by ssr
 	
 	local safe_dns="$1"
