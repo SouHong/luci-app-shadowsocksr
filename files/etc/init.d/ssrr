@@ -9,24 +9,19 @@ SS_REDIR_PORT=7070
 SS_TUNNEL_PORT=7071
 SS_LOCAL_PORT=7072
 SS_REDIR_PIDFILE=/var/run/ssrr-redir-go.pid 
-V2RAY_PIDFILE=/var/run/ssrr-v2ray-go.pid
-BROOK_PIDFILE=/var/run/ssrr-brook-go.pid 
 SS_TUNNEL_PIDFILE=/var/run/ssrr-tunnel-go.pid 
 SS_LOCAL_PIDFILE=/var/run/ssrr-local-go.pid
+V2RAY_PIDFILE=/var/run/ssrr-v2ray-go.pid
+BROOK_PIDFILE=/var/run/ssrr-brook-go.pid 
 PDNSD_LOCAL_PORT=5053 #alex:防止和单独的pdnsd服务冲突
 SSR_CONF=/etc/ssrr/shadowsocksr.json
-V2RAY_CONF=/etc/v2ray/config.json
-V2_CONF_GENERATE_LUA=/etc/v2ray/gen_config.lua
-CONFIG=v2ray
-CONFIG1=brook
-CRON_FILE=/etc/crontabs/root
-V2RAY_EXEC_PATH=/usr/bin/v2ray/v2ray
 dnsforwarder_pid=/var/run/dnsforwarder/dns.pid
 vt_gfwlist=china-banned
 vt_np_ipset="chinaip"  # Must be global variable
 vt_local_ipset="localip"
 vt_remote_ipset="remoteip"
 WHITE_SET=whiteset #强制不走代理的ipset
+V2RAY_CONF=/etc/v2ray/config.json
 
 start()
 {
@@ -56,7 +51,6 @@ start()
 	local local_addresses=`uci get ssrr.@shadowsocksr[0].local_addresses 2>/dev/null`
 	local conf_file_path=`uci get ssrr.@shadowsocksr[0].conf_file_path 2>/dev/null`
 	local conf_file_type=`uci get ssrr.@shadowsocksr[0].conf_file_type 2>/dev/null`
-
 	
 
 	# -----------------------------------------------------------------
@@ -141,12 +135,27 @@ EOF
 			}
 			;;
 		v2ray)
-			$V2RAY_EXEC_PATH -config=$conf_file_path -format=$conf_file_type || return 1
-
-			;;
+			sleep 1
+			/usr/bin/v2ray/v2ray -config=$conf_file_path -format=$conf_file_type
+			
+			sleep 3
+			if pidof v2ray>/dev/null; then
+			echo "V2Ray started"
+			else
+			return 1
+			fi
+			;;	
 		Brook)
-		/usr/bin/brook tproxy -l 127.0.0.1:$SS_REDIR_PORT -s $vt_server_addr:$vt_server_port -p $vt_password || return 1
-			;;
+			sleep 1
+			/usr/bin/brook tproxy -l :$SS_REDIR_PORT -s $vt_server_addr:$vt_server_port -p $vt_password
+			
+			sleep 3
+			if pidof brook>/dev/null; then
+			echo "Brook started"
+			else
+			return 1
+			fi
+			;;	
 		Redsocks2)
 			cat > $SSR_CONF <<EOF
 base {
@@ -222,43 +231,23 @@ EOF
 	}
 
 	iptables -t nat -A ssrr_pre -m set --match-set $vt_local_ipset dst -j RETURN || { #应对没有安装ipset的用户
-		iptables -t nat -A ssrr_pre -d 0.0.0.0/8 -j RETURN
 		iptables -t nat -A ssrr_pre -d 10.0.0.0/8 -j RETURN
 		iptables -t nat -A ssrr_pre -d 127.0.0.0/8 -j RETURN
-		iptables -t nat -A ssrr_pre -d 169.254.0.0/16 -j RETURN
 		iptables -t nat -A ssrr_pre -d 172.16.0.0/12 -j RETURN
 		iptables -t nat -A ssrr_pre -d 192.168.0.0/16 -j RETURN
 		iptables -t nat -A ssrr_pre -d 127.0.0.0/8 -j RETURN
 		iptables -t nat -A ssrr_pre -d 224.0.0.0/3 -j RETURN
-		iptables -t nat -A ssrr_pre -d 240.0.0.0/4 -j RETURN
 	}
 	
-	if [ "$tool" != "v2ray" ]; then
-	iptables -t nat -A ssrr_pre -d $vt_server_addr -j RETURN
-	fi
-	if [ "$tool" != "Brook" ]; then
-	iptables -t nat -A ssrr_pre -d $vt_server_addr -j RETURN
-	fi
-	
+
 	iptables -t mangle -A SSRUDP -m set --match-set $vt_local_ipset dst -j RETURN || { #应对没有安装ipset的用户
 		iptables -t mangle -A SSRUDP -d 10.0.0.0/8 -j RETURN
-		iptables -t mangle -A SSRUDP -d 127.0.0.0/8 -j RETURN
-		iptables -t mangle -A SSRUDP -d 172.16.0.0/12 -j RETURN
-		iptables -t mangle -A SSRUDP -d 192.168.0.0/16 -j RETURN
-		iptables -t mangle -A SSRUDP -d 127.0.0.0/8 -j RETURN
-		iptables -t mangle -A SSRUDP -d 224.0.0.0/3 -j RETURN
+		iptables -t mangle -A SSRUDP  -d 127.0.0.0/8 -j RETURN
+		iptables -t mangle -A SSRUDP  -d 172.16.0.0/12 -j RETURN
+		iptables -t mangle -A SSRUDP  -d 192.168.0.0/16 -j RETURN
+		iptables -t mangle -A SSRUDP  -d 127.0.0.0/8 -j RETURN
+		iptables -t mangle -A SSRUDP  -d 224.0.0.0/3 -j RETURN
 	}
-	
-	if [ "$tool" != "Brook" ]; then
-	iptables -t mangle -A ssrr_pre -j MARK --set-mark 1
-	iptables -t mangle -A ssrr_pre -j ACCEPT
-	
-	iptables -t mangle -A PREROUTING -p tcp -m socket -j ssrr_pre
-	iptables -t mangle -A PREROUTING -p tcp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 7070
-
-	iptables -t mangle -A PREROUTING -p udp -m socket -j ssrr_pre
-	iptables -t mangle -A PREROUTING -p udp -j TPROXY --tproxy-mark 0x1/0x1 --on-port 7070
-	fi
 	
 	if [ "$white" = 1 ]; then #强制不代理域名
 		ipset create $WHITE_SET hash:net family inet hashsize 1024 maxelem 65536 2>/dev/null
@@ -270,7 +259,7 @@ EOF
 	ip route add local default dev lo table 100
 
 	iptables -t nat -A ssrr_pre -d $vt_server_addr -j RETURN
-	iptables -t nat -A ssrr_pre -p tcp -m set --match-set $vt_remote_ipset dst -j REDIRECT --to $SS_REDIR_PORT #强制走代理的IP
+	iptables -t nat -A ssrr_pre -p tcp  -m set --match-set $vt_remote_ipset dst -j REDIRECT --to $SS_REDIR_PORT #强制走代理的IP
 	iptables -t mangle -A SSRUDP -d $vt_server_addr -j RETURN
 	iptables -t mangle -A SSRUDP -p udp --dport 53 -j RETURN
 
@@ -318,9 +307,9 @@ EOF
 				iptables -t mangle -A SSRUDP -s $host -j RETURN
 				;;
 			game)
-				iptables -t nat -A ssrr_pre -s $host -m set --match-set $vt_np_ipset dst -j RETURN
-				iptables -t mangle -A SSRUDP -s $host -m set --match-set $vt_np_ipset dst -j RETURN
-				iptables -t mangle -A SSRUDP -s $host -p udp -j TPROXY --on-port $SS_REDIR_PORT --tproxy-mark 0x01/0x01
+				iptables -t nat -A ssrr_pre -s $host  -m set --match-set $vt_np_ipset dst -j RETURN
+				iptables -t mangle -A SSRUDP -s $host  -m set --match-set $vt_np_ipset dst -j RETURN
+				iptables -t mangle -A SSRUDP -s $host  -p udp -j TPROXY --on-port $SS_REDIR_PORT --tproxy-mark 0x01/0x01
 				;;
 			all)
 				;;
