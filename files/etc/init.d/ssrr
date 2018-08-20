@@ -135,7 +135,6 @@ EOF
 			}
 			;;
 		v2ray)
-			sleep 1
 			/usr/bin/v2ray/v2ray -config=$conf_file_path -format=$conf_file_type
 			
 			sleep 3
@@ -146,6 +145,8 @@ EOF
 			fi
 			;;	
 		Brook)
+
+			/usr/bin/brook tunnel -l :$PDNSD_LOCAL_PORT -t $vt_safe_dns:$vt_safe_dns_port -s $vt_server_addr:$vt_server_port -p $vt_password
 			sleep 1
 			/usr/bin/brook tproxy -l :$SS_REDIR_PORT -s $vt_server_addr:$vt_server_port -p $vt_password
 			
@@ -231,22 +232,27 @@ EOF
 	}
 
 	iptables -t nat -A ssrr_pre -m set --match-set $vt_local_ipset dst -j RETURN || { #应对没有安装ipset的用户
+		iptables -t nat -A ssrr_pre -d 0.0.0.0/8 -j RETURN
 		iptables -t nat -A ssrr_pre -d 10.0.0.0/8 -j RETURN
 		iptables -t nat -A ssrr_pre -d 127.0.0.0/8 -j RETURN
+		iptables -t nat -A ssrr_pre -d 169.254.0.0/16 -j RETURN
 		iptables -t nat -A ssrr_pre -d 172.16.0.0/12 -j RETURN
 		iptables -t nat -A ssrr_pre -d 192.168.0.0/16 -j RETURN
 		iptables -t nat -A ssrr_pre -d 127.0.0.0/8 -j RETURN
 		iptables -t nat -A ssrr_pre -d 224.0.0.0/3 -j RETURN
+		iptables -t nat -A ssrr_pre -d 240.0.0.0/4 -j RETURN
 	}
 	
 
 	iptables -t mangle -A SSRUDP -m set --match-set $vt_local_ipset dst -j RETURN || { #应对没有安装ipset的用户
-		iptables -t mangle -A SSRUDP -d 10.0.0.0/8 -j RETURN
-		iptables -t mangle -A SSRUDP  -d 127.0.0.0/8 -j RETURN
-		iptables -t mangle -A SSRUDP  -d 172.16.0.0/12 -j RETURN
-		iptables -t mangle -A SSRUDP  -d 192.168.0.0/16 -j RETURN
-		iptables -t mangle -A SSRUDP  -d 127.0.0.0/8 -j RETURN
-		iptables -t mangle -A SSRUDP  -d 224.0.0.0/3 -j RETURN
+		iptables -t mangle -A SSRUDP -d 0.0.0.0/8 -j RETURN
+		iptables -t mangle -A SSRUDP -d 10.0.0.0/8 -j RETURN	
+		iptables -t mangle -A SSRUDP -d 127.0.0.0/8 -j RETURN
+		iptables -t mangle -A SSRUDP -d 169.254.0.0/16 -j RETURN
+		iptables -t mangle -A SSRUDP -d 172.16.0.0/12 -j RETURN
+		iptables -t mangle -A SSRUDP -d 192.168.0.0/16 -j RETURN
+		iptables -t mangle -A SSRUDP -d 224.0.0.0/4 -j RETURN
+		iptables -t mangle -A SSRUDP -d 240.0.0.0/4 -j RETURN
 	}
 	
 	if [ "$white" = 1 ]; then #强制不代理域名
@@ -493,6 +499,8 @@ stop()
 		rm -f $BROOK_PIDFILE
 	fi
 	killall -9 brook 2>/dev/null
+	sleep 1
+	killall -9 brook 2>/dev/null
 }
 
 keep_chinaip=0
@@ -507,6 +515,7 @@ restart()
 # $1: upstream DNS server
 start_dnsforwarder()
 {
+	sleep 6
 	echo reday to start dnsforwarder by ssr
 	
 	local safe_dns="$1"
