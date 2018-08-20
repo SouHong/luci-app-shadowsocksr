@@ -145,7 +145,7 @@ EOF
 
 			;;
 		Brook)
-		/usr/bin/brook tproxy -l 127.0.0.1:1080 -s $vt_server_addr:$vt_server_port -p $vt_password || return 1
+		/usr/bin/brook tproxy -l 127.0.0.1:$SS_REDIR_PORT -s $vt_server_addr:$vt_server_port -p $vt_password || return 1
 			;;
 		Redsocks2)
 			cat > $SSR_CONF <<EOF
