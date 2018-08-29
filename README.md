@@ -1,6 +1,6 @@
 OpenWrt LuCI for ShadowsocksR-libev
 ===
-警告！！！！没改完不要用，否则会造成不可描述的后果。
+警告！！！！brook暂时无法使用
 
 用于科学上网的智能透明代理工具
 
